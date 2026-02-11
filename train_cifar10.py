@@ -51,6 +51,8 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
 # ============================================================
@@ -171,7 +173,7 @@ def train_model(model_name: str, seed: int):
     """Full training pipeline for one model + seed combination."""
 
     set_seed(seed)
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\n{'='*60}")
     print(f"Training {model_name} | Seed {seed} | Device: {device}")
 
