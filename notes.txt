@@ -1,0 +1,5 @@
+### So, my hypothesis is that the blindspots observed in the robust_eeg experiment are generalisable. This means that the effects of perturbations to data as well as the implications are generalisable as well. 
+
+I think that we should try this with vision models. As this would mean that perception for things like self driving could be vulnerable to attack. 
+
+If this proves to be true, then we will move on to speech modes, where the implications are also dier.
