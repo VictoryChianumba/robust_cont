@@ -58,24 +58,35 @@ def set_seed(seed: int):
 # ============================================================
 # Data
 # ============================================================
-def get_dataloaders():
+def get_dataloaders(resize_224=False):
     """
     CIFAR-10 with standard augmentation for training.
     Images resized to 224x224 for pretrained model compatibility.
     """
-    train_transform = transforms.Compose([
-        transforms.Resize(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(224, padding=16),
-        transforms.ToTensor(),
-        transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD),
-    ])
-
-    test_transform = transforms.Compose([
-        transforms.Resize(224),
-        transforms.ToTensor(),
-        transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD),
-    ])
+    if resize_224:
+        train_transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(224, padding=16),
+            transforms.ToTensor(),
+            transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD),
+        ])
+        test_transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.ToTensor(),
+            transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD),
+        ])
+    else:
+        train_transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(32, padding=4),
+            transforms.ToTensor(),
+            transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD),
+        ])
+        test_transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD),
+        ])
 
     train_dataset = datasets.CIFAR10(
         root=DATA_DIR, train=True, download=True, transform=train_transform
@@ -99,23 +110,31 @@ def get_dataloaders():
 # Models
 # ============================================================
 def get_model(model_name: str) -> nn.Module:
-    """
-    Load pretrained ImageNet model and replace final classifier
-    for CIFAR-10 (10 classes).
-    """
     if model_name == "resnet18":
         model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        model.maxpool = nn.Identity()
         model.fc = nn.Linear(model.fc.in_features, CIFAR10_CLASSES)
 
     elif model_name == "vgg16":
         model = models.vgg16(weights=models.VGG16_Weights.DEFAULT)
-        model.classifier[-1] = nn.Linear(4096, CIFAR10_CLASSES)
+        model.features[0] = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1)
+        model.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        model.classifier = nn.Sequential(
+            nn.Linear(512, 512),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(512, CIFAR10_CLASSES),
+        )
 
     elif model_name == "densenet121":
         model = models.densenet121(weights=models.DenseNet121_Weights.DEFAULT)
+        model.features.conv0 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        model.features.pool0 = nn.Identity()
         model.classifier = nn.Linear(model.classifier.in_features, CIFAR10_CLASSES)
 
     elif model_name == "vit_b_16":
+        # ViT needs 224x224 — handled separately in data loading
         model = models.vit_b_16(weights=models.ViT_B_16_Weights.DEFAULT)
         model.heads.head = nn.Linear(model.heads.head.in_features, CIFAR10_CLASSES)
 
