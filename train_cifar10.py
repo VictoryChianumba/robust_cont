@@ -199,7 +199,8 @@ def train_model(model_name: str, seed: int):
     print(f"{'='*60}")
 
     # Data
-    train_loader, test_loader = get_dataloaders()
+    resize = (model_name == "vit_b_16")
+    train_loader, test_loader = get_dataloaders(resize_224=resize)
 
     # Model
     model = get_model(model_name).to(device)
