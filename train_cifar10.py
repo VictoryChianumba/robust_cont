@@ -25,9 +25,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, models
 from tqdm import tqdm
 
-# ============================================================
 # Config
-# ============================================================
 BATCH_SIZE = 128
 NUM_EPOCHS = 30
 LEARNING_RATE = 1e-3
@@ -37,6 +35,7 @@ CIFAR10_CLASSES = 10
 DATA_DIR = "./data"
 CHECKPOINT_DIR = "./checkpoints"
 RESULTS_DIR = "./results"
+PREDS_DIR = "./preds"
 
 MODEL_NAMES = ["resnet18", "vgg16", "densenet121", "vit_b_16"]
 
@@ -44,9 +43,7 @@ MODEL_NAMES = ["resnet18", "vgg16", "densenet121", "vit_b_16"]
 CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
 CIFAR10_STD = (0.2470, 0.2435, 0.2616)
 
-# ============================================================
 # Reproducibility
-# ============================================================
 def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
@@ -55,9 +52,7 @@ def set_seed(seed: int):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-# ============================================================
 # Data
-# ============================================================
 def get_dataloaders(resize_224=False):
     """
     CIFAR-10 with standard augmentation for training.
@@ -106,9 +101,7 @@ def get_dataloaders(resize_224=False):
 
     return train_loader, test_loader
 
-# ============================================================
 # Models
-# ============================================================
 def get_model(model_name: str) -> nn.Module:
     if model_name == "resnet18":
         model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
@@ -143,9 +136,8 @@ def get_model(model_name: str) -> nn.Module:
 
     return model
 
-# ============================================================
+
 # Training
-# ============================================================
 def train_one_epoch(model, loader, criterion, optimizer, device):
     model.train()
     running_loss = 0.0
@@ -174,10 +166,12 @@ def evaluate(model, loader, criterion, device):
     running_loss = 0.0
     correct = 0
     total = 0
+    all_logits = []
+    all_preds = []
+    all_labels = []
 
     for images, labels in tqdm(loader, desc="  Eval", leave=False):
         images, labels = images.to(device), labels.to(device)
-
         outputs = model(images)
         loss = criterion(outputs, labels)
 
@@ -186,7 +180,17 @@ def evaluate(model, loader, criterion, device):
         correct += predicted.eq(labels).sum().item()
         total += labels.size(0)
 
-    return running_loss / total, correct / total
+        all_logits.append(outputs.cpu())
+        all_preds.append(predicted.cpu())
+        all_labels.append(labels.cpu())
+
+    preds = {
+        "logits": torch.cat(all_logits).numpy().tolist(),
+        "preds": torch.cat(all_preds).numpy().tolist(),
+        "labels": torch.cat(all_labels).numpy().tolist(),
+    }
+
+    return running_loss / total, correct / total, preds
 
 def train_model(model_name: str, seed: int):
     """Full training pipeline for one model + seed combination."""
@@ -218,7 +222,7 @@ def train_model(model_name: str, seed: int):
         train_loss, train_acc = train_one_epoch(
             model, train_loader, criterion, optimizer, device
         )
-        test_loss, test_acc = evaluate(model, test_loader, criterion, device)
+        test_loss, test_acc, test_preds = evaluate(model, test_loader, criterion, device)
         scheduler.step()
 
         print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}")
@@ -236,6 +240,8 @@ def train_model(model_name: str, seed: int):
         # Save best model
         if test_acc > best_acc:
             best_acc = test_acc
+            best_preds = test_preds
+
             os.makedirs(CHECKPOINT_DIR, exist_ok=True)
             save_path = os.path.join(
                 CHECKPOINT_DIR, f"{model_name}_seed{seed}_best.pth"
@@ -249,6 +255,7 @@ def train_model(model_name: str, seed: int):
             }, save_path)
             print(f"  -> Saved best model (acc: {best_acc:.4f})")
 
+    
     # Save training history
     os.makedirs(RESULTS_DIR, exist_ok=True)
     history_path = os.path.join(
@@ -256,6 +263,14 @@ def train_model(model_name: str, seed: int):
     )
     with open(history_path, "w") as f:
         json.dump(history, f, indent=2)
+
+    # Save test logits
+    os.makedirs(PREDS_DIR, exist_ok=True)
+    preds_path = os.path.join(
+        PREDS_DIR, f"{model_name}_seed{seed}_predictions.json"
+    )
+    with open(preds_path, "w") as f:
+        json.dump(best_preds, f, indent=2)
 
     print(f"\nFinished {model_name} seed {seed} | Best Test Acc: {best_acc:.4f}")
     return best_acc
