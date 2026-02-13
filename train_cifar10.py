@@ -214,6 +214,7 @@ def train_model(model_name: str, seed: int):
 
     # Training loop
     best_acc = 0.0
+    best_preds = None
     history = []
 
     for epoch in range(1, NUM_EPOCHS + 1):
@@ -264,7 +265,7 @@ def train_model(model_name: str, seed: int):
     with open(history_path, "w") as f:
         json.dump(history, f, indent=2)
 
-    # Save test logits
+    # Save test predictions
     os.makedirs(PREDS_DIR, exist_ok=True)
     preds_path = os.path.join(
         PREDS_DIR, f"{model_name}_seed{seed}_predictions.json"
