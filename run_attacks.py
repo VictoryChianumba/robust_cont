@@ -8,6 +8,7 @@ Usage:
     python run_attacks.py
     python run_attacks.py --attack FGSM
     python run_attacks.py --model resnet18
+    python run_attacks.py --checkpoint-dir /path/to/checkpoints
 """
 
 import argparse
@@ -93,19 +94,19 @@ def get_model(model_name: str) -> nn.Module:
     return model
 
 
-def load_checkpoint(model: nn.Module, model_name: str, seed: int, device: torch.device) -> nn.Module:
-    ckpt_path = os.path.join(CHECKPOINT_DIR, f"{model_name}_seed{seed}_best.pth")
+def load_checkpoint(model: nn.Module, model_name: str, seed: int, device: torch.device, checkpoint_dir: str) -> nn.Module:
+    ckpt_path = os.path.join(checkpoint_dir, f"{model_name}_seed{seed}_best.pth")
     ckpt = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
     return model
 
 
-def run(attacks_to_run, models_to_run):
+def run(attacks_to_run, models_to_run, checkpoint_dir):
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     print(f"Device: {device}")
+    print(f"Checkpoint dir: {checkpoint_dir}")
 
-    # evasion config — no ROI for CIFAR-10
     channel_cfg = ChannelConfig()
 
     run_cfg = RunConfig(
@@ -126,7 +127,6 @@ def run(attacks_to_run, models_to_run):
         print(f"\n{'='*50}\nModel: {model_name}")
         resize = (model_name == "vit_b_16")
 
-        # load test data once per model (ViT needs 224x224)
         X, y = load_all_test_data(resize_224=resize)
         X = X.to(device)
         y = y.to(device)
@@ -134,7 +134,7 @@ def run(attacks_to_run, models_to_run):
         for seed in SEEDS:
             print(f"  Seed {seed}")
             model = get_model(model_name).to(device)
-            model = load_checkpoint(model, model_name, seed, device)
+            model = load_checkpoint(model, model_name, seed, device, checkpoint_dir)
 
             ig = IGExplainer(model, n_steps=run_cfg.n_steps_ig, max_n=run_cfg.attr_max_n)
 
@@ -176,9 +176,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--attack", type=str, default="all", choices=ALL_ATTACKS + ["all"])
     parser.add_argument("--model", type=str, default="all", choices=MODEL_NAMES + ["all"])
+    parser.add_argument("--checkpoint-dir", type=str, default=CHECKPOINT_DIR,
+                        help="Path to checkpoint directory.")
     args = parser.parse_args()
 
     attacks = ALL_ATTACKS if args.attack == "all" else [args.attack]
     model_names = MODEL_NAMES if args.model == "all" else [args.model]
 
-    run(attacks, model_names)
+    run(attacks, model_names, checkpoint_dir=args.checkpoint_dir)
